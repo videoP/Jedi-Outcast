@@ -848,7 +848,10 @@ static qboolean PM_CheckJump( void )
 					//need to scale this down, start with height velocity (based on max force jump height) and scale down to regular jump vel
 					pm->ps->velocity[2] = (forceJumpHeight[pm->ps->fd.forcePowerLevel[FP_LEVITATION]]-curHeight)/forceJumpHeight[pm->ps->fd.forcePowerLevel[FP_LEVITATION]]*forceJumpStrength[pm->ps->fd.forcePowerLevel[FP_LEVITATION]];//JUMP_VELOCITY;
 					pm->ps->velocity[2] /= 10;
-					pm->ps->velocity[2] += JUMP_VELOCITY;
+					if (pm->ps->stats[STAT_MOVEMENTSTYLE] == RAMPJUMP)
+						pm->ps->velocity[2] += pm->ps->stats[STAT_LASTJUMPSPEED];
+					else
+						pm->ps->velocity[2] += JUMP_VELOCITY;
 					pm->ps->pm_flags |= PMF_JUMP_HELD;
 				}
 				else if ( curHeight > forceJumpHeight[0] && curHeight < forceJumpHeight[pm->ps->fd.forcePowerLevel[FP_LEVITATION]] - forceJumpHeight[0] )
@@ -1257,6 +1260,42 @@ static qboolean PM_CheckJump( void )
 	}
 	if ( pm->cmd.upmove > 0 )
 	{//no special jumps
+		float realjumpvelocity = JUMP_VELOCITY;
+		if (pm->ps->stats[STAT_MOVEMENTSTYLE] == RAMPJUMP)
+		{
+			vec3_t hVel;
+			float added, xyspeed;
+
+			else realjumpvelocity = 270.0f;
+
+			hVel[0] = pm->ps->velocity[0];
+			hVel[1] = pm->ps->velocity[1];
+			hVel[2] = 0;
+			xyspeed = sqrt(hVel[0] * hVel[0] + hVel[1] * hVel[1]);
+			added = -DotProduct(hVel, pml.groundTrace.plane.normal);
+			pm->ps->velocity[2] = realjumpvelocity;
+
+			if (added > (xyspeed * 0.5))
+				added = (xyspeed * 0.5);//Sad sanity check hack
+
+			if (added > 0) {
+				pm->ps->velocity[2] += (added * 1.25f); //Make rampjump stronger
+			}
+
+#if 0//Debug print to jumper
+			{
+				gentity_t *gent = (gentity_t *)pm_entSelf;
+				trap->SendServerCommand(gent-g_entities, va("chat \"XYSPEED: %.2f, ZSPEED: %.2f, ADDED: %.2f, JUMPTIME: %i\n\"", xyspeed, pm->ps->velocity[2], added, pm->ps->stats[STAT_JUMPTIME]));
+			}
+#endif
+
+			pm->ps->stats[STAT_LASTJUMPSPEED] = pm->ps->velocity[2]; //This doesnt need to be a networked var but w/e
+
+		}
+		else {
+			pm->ps->velocity[2] = realjumpvelocity;
+		}
+				
 		/*
 		gentity_t *groundEnt = &g_entities[pm->ps->groundEntityNum];
 		if ( groundEnt && groundEnt->NPC )
@@ -1265,7 +1304,7 @@ static qboolean PM_CheckJump( void )
 		}
 		*/
 
-		pm->ps->velocity[2] = JUMP_VELOCITY;
+		//pm->ps->velocity[2] = JUMP_VELOCITY;
 		pm->ps->fd.forceJumpZStart = pm->ps->origin[2];//so we don't take damage if we land at same height
 		pm->ps->pm_flags |= PMF_JUMP_HELD;//PMF_JUMPING;
 	}
